@@ -1,27 +1,40 @@
 const express = require("express");
 const multer = require("multer");
-const bodyParser = require("body-parser");
+const path = require("path");
+const cors = require("cors");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
 dotenv.config();
 
 const app = express();
-app.use(bodyParser.json());
+const port = process.env.PORT || 5000;
 
+// Enable CORS
+app.use(cors());
+
+// Body parser middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// MongoDB connection
 mongoose
   .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log("Connected to MongoDB Atlas"))
-  .catch((err) => console.error(err));
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
-// Multer setup
+// Multer setup for file upload
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // Set destination folder for uploaded files
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`); // File name with timestamp
+  },
 });
 const upload = multer({ storage });
 
-// Mongoose schema
+// MongoDB schema for resume data
 const resumeSchema = new mongoose.Schema({
   name: String,
   email: String,
@@ -35,14 +48,18 @@ const resumeSchema = new mongoose.Schema({
 
 const Resume = mongoose.model("Resume", resumeSchema);
 
-// POST route
+// Route for submitting resume data
 app.post("/resume", upload.single("profileImage"), async (req, res) => {
   try {
+    console.log("Received formData:", req.body.formData); // Debugging the formData
+    console.log("Received file:", req.file); // Debugging the file
+
     const { formData } = req.body;
     const parsedData = JSON.parse(formData);
+
     const newResume = new Resume({
       ...parsedData,
-      profileImage: req.file.path,
+      profileImage: req.file ? req.file.path : "", // Ensuring file is handled
     });
 
     await newResume.save();
@@ -53,5 +70,23 @@ app.post("/resume", upload.single("profileImage"), async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Route to fetch the latest profile data (You can replace with MongoDB data retrieval later)
+app.get("/profile", async (req, res) => {
+  try {
+    const profile = await Resume.findOne().sort({ _id: -1 }).limit(1); // Get the latest resume
+
+    if (profile) {
+      res.json(profile);
+    } else {
+      res.status(404).json({ message: "Profile not found" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error fetching profile" });
+  }
+});
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
